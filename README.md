@@ -1,4 +1,4 @@
-# Intro to Blockchain - Assignment4
+# Intro to Blockchain - Assignment 4
 
 ### Group Information
 
@@ -7,7 +7,7 @@
 | Numaan Qureshi  | numaan.qureshi58@myhunter.cuny.edu |
 | *Tamar*         | *email* |
 | *Mounata*       | *email* |
-| *Sifatun*       | *email* |
+| Sifatun Noor    | sifatun.noor37@myhunter.cuny.edu |
 | *Member 5*      | *email* |
 
 ---
