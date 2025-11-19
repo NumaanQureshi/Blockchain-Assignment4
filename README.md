@@ -1,6 +1,6 @@
 # Intro to Blockchain - Assignment4
 
-## Group Information
+### Group Information
 
 | Name            | Email                              |
 | --------------  | ---------------------------------- |
@@ -12,5 +12,5 @@
 
 ---
 
-## Contract Purpose
+### Contract Purpose
 *Purpose*
