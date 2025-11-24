@@ -5,7 +5,7 @@
 | Name            | Email                              |
 | --------------  | ---------------------------------- |
 | Numaan Qureshi  | numaan.qureshi58@myhunter.cuny.edu |
-| *Tamar*         | *email* |
+| Tamar Abelson   | tamar.abelson22@myhunter.cuny.edu  |
 | *Mounata*       | *email* |
 | Sifatun Noor    | sifatun.noor37@myhunter.cuny.edu |
 | *Member 5*      | *email* |
