@@ -13,8 +13,8 @@
 ---
 
 ### Contract Purpose
-The LostPet smart contract allows pet owners who lost their pet to post a bounty, and reward whoever helps them find their lost pet. 
-A pet owner can create a lost pet case, provide description, and send ETH as a bounty. Other users can then submit a found report for that case, providing evidence such as a photo, or location it was found. 
-If there is a match and the pet was found, the owner resolves the case by choosing the pet’s finder address. The contract transfers the bounty to that finder and marks that case as resolved.
-The contract also allows the owner to increase the bounty in order to motivate help, or to cancel an unresolved case and reclaim their bounty.
-
+The LostPet smart contract enables pet owners who lost their pet to post a bounty and then reward whoever helps them locate their lost pet. 
+A pet owner can create a lost-pet case, provide a description, and deposit ETH as a bounty which is held in the contract until the case is resolved. Other users can submit found reports for that case, providing evidence such as a photo link or the location where the pet was found. 
+If there is a match and the pet was found, the owner resolves the case by choosing the finder's address. The contract then transfers the bounty to that finder and marks that case as resolved.
+The contract also allows the owner to increase the bounty in order to motivate more help or to cancel an unresolved case and reclaim their bounty.
+Overall, this contract serves as a decentralized way for individuals to find and recover their lost pets by providing an incentive for others to assist them.
