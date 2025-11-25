@@ -8,7 +8,7 @@
 | Tamar Abelson   | tamar.abelson22@myhunter.cuny.edu  |
 | *Mounata*       | mounata.haque08@myhunter.cuny.edu |
 | Sifatun Noor    | sifatun.noor37@myhunter.cuny.edu |
-| *Member 5*      | *email* |
+| Sheik Siphat     | sheik.siphat17@myhunter.cuny.edu |
 
 ---
 
