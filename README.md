@@ -6,9 +6,9 @@
 | --------------  | ---------------------------------- |
 | Numaan Qureshi  | numaan.qureshi58@myhunter.cuny.edu |
 | Tamar Abelson   | tamar.abelson22@myhunter.cuny.edu  |
-| *Mounata*       | mounata.haque08@myhunter.cuny.edu |
-| Sifatun Noor    | sifatun.noor37@myhunter.cuny.edu |
-| Sheik Siphat     | sheik.siphat17@myhunter.cuny.edu |
+| Mounata Haque   | mounata.haque08@myhunter.cuny.edu  |
+| Sifatun Noor    | sifatun.noor37@myhunter.cuny.edu   |
+| Sheik Siphat    | sheik.siphat17@myhunter.cuny.edu   |
 
 ---
 
