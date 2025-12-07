@@ -13,6 +13,8 @@ interface ILostPet {
         string petDetails;
         uint256 bounty;
         bool isResolved;
+        uint256 createdOn;
+        uint256 expiresOn;
     }
 
     
@@ -24,11 +26,13 @@ interface ILostPet {
     /// @param owner Address of the owner who created the case
     /// @param bounty Amount of ETH (in wei) locked as bounty
     /// @param petDetails Off chain string with the pet details
+    /// @param expiresOn Unix timestamp of when the case expires
     event CaseCreated(
         uint256 indexed caseId, 
         address indexed owner, 
         uint256 bounty,
-        string petDetails
+        string petDetails,
+        uint256 expiresOn
     );
 
     /// @notice When someone submits a found report for a case
