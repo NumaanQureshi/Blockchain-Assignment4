@@ -74,6 +74,16 @@ interface ILostPet {
         address indexed owner,
         uint256 amount
     );
+
+    /// @notice Case expires automatically
+    /// @param caseId The lost pet case ID
+    /// @param owner Address of the pet owner
+    /// @param amount Amount of ETH (in wei) refunded to the owner
+    event CaseExpired(
+        uint256 indexed caseId, 
+        address indexed owner,
+        uint256 amount
+    );
     
     // --- Function Headers ---
 
