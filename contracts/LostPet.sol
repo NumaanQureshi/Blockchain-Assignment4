@@ -9,8 +9,10 @@ contract LostPet {
     // Basic state variables
     uint256 public nextCaseId;
     mapping(uint256 => PetCase) public cases;
+
     mapping(uint256 => address[]) public caseFinders;
     mapping(uint256 => mapping(address => bool)) public isFinderForCase;
+    mapping(uint256 => mapping(address => string)) public finderEvidence;
     
     // Constants for gas optimization
     uint256 public constant DEFAULT_EXPIRY_DAYS = 90 days;
@@ -29,10 +31,10 @@ contract LostPet {
     
     // Only essential events
     event CaseCreated(uint256 indexed caseId, address indexed owner, string petName, uint256 bounty, uint256 expiresAt);
-    event FinderSubmitted(uint256 indexed caseId, address indexed finder);
+    event FinderSubmitted(uint256 indexed caseId, address indexed finder, string evidence);
     event CaseResolved(uint256 indexed caseId, address indexed finder, uint256 bountyAmount);
+    event IncreaseBounty(uint256 indexed caseId, uint256 additionalAmount, uint256 newTotal);
     event CaseCancelled(uint256 indexed caseId, address indexed owner, uint256 refundAmount);
-    event BountyIncreased(uint256 indexed caseId, uint256 additionalAmount, uint256 newTotal);
     event CaseExpired(uint256 indexed caseId, address indexed owner, uint256 refundAmount);
     
     // =============================================
@@ -78,7 +80,7 @@ contract LostPet {
         
         cases[caseId].bounty += msg.value;
         
-        emit BountyIncreased(caseId, msg.value, cases[caseId].bounty);
+        emit IncreaseBounty(caseId, msg.value, cases[caseId].bounty);
     }
     
     /**
@@ -92,9 +94,8 @@ contract LostPet {
         require(block.timestamp < cases[caseId].expiresAt, "Case expired");
         require(finderIndex < caseFinders[caseId].length, "Invalid finder index");
         
-        // TODO: Wallet/Escrow check - STARTED
-        // MISSING: Add check for sufficient contract balance before transfer
-        // MISSING: require(address(this).balance >= cases[caseId].bounty, "Insufficient contract balance");
+        // Wallet/Escrow check
+        require(address(this).balance >= cases[caseId].bounty, "Insufficient contract balance");
         
         address finder = caseFinders[caseId][finderIndex];
         uint256 bounty = cases[caseId].bounty;
@@ -121,9 +122,8 @@ contract LostPet {
         require(!cases[caseId].isCancelled, "Case cancelled");
         require(block.timestamp < cases[caseId].expiresAt, "Case expired");
         
-        // TODO: Time restriction - STARTED
-        // MISSING: Add minimum time before cancellation allowed
-        // MISSING: require(block.timestamp >= cases[caseId].createdAt + 7 days, "Cannot cancel before 7 days");
+        // Time restriction
+        require(block.timestamp >= cases[caseId].createdAt + 7 days, "Cannot cancel before 7 days");
         
         uint256 refundAmount = cases[caseId].bounty;
         cases[caseId].isCancelled = true;
@@ -142,17 +142,19 @@ contract LostPet {
     /**
      * @notice Submit yourself as a finder for a case
      */
-    function submitAsFinder(uint256 caseId) external {
+    function submitAsFinder(uint256 caseId, string calldata evidence) external {
         require(caseId < nextCaseId, "Case does not exist");
         require(!cases[caseId].isResolved, "Case already resolved");
         require(!cases[caseId].isCancelled, "Case cancelled");
         require(block.timestamp < cases[caseId].expiresAt, "Case expired");
         require(!isFinderForCase[caseId][msg.sender], "Already submitted as finder");
+        require(bytes(evidence).length > 0, "Evidence cannot be empty");
         
         caseFinders[caseId].push(msg.sender);
         isFinderForCase[caseId][msg.sender] = true;
+        finderEvidence[caseId][msg.sender] = evidence;
         
-        emit FinderSubmitted(caseId, msg.sender);
+        emit FinderSubmitted(caseId, msg.sender, evidence);
     }
     
     // =============================================
@@ -281,6 +283,18 @@ contract LostPet {
             finders[i - startIndex] = caseFinders[caseId][i];
         }
         return finders;
+    }
+
+    /**
+     * @notice View the evidence submitted by a specific finder
+     */
+    function getFinderEvidence(uint256 caseId, address finder)
+        external
+        view
+        returns (string memory evidence)
+    {
+        require(caseId < nextCaseId, "Case does not exist");
+        return finderEvidence[caseId][finder];
     }
     
     /**

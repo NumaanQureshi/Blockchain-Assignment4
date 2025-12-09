@@ -16,7 +16,6 @@ interface LostPetInterface {
         bool isCancelled;
         uint256 createdAt;
         uint256 expiresAt;
-        mapping(address => string) finderEvidence;
     }
 
     
@@ -104,8 +103,8 @@ interface LostPetInterface {
     /// @notice Resolve case and pay bounty to a finder
     /// @dev Only case owner can call this function
     /// @param caseId The lost pet case ID
-    /// @param finder Address of the finder who will receive the bounty 
-    function resolveCase(uint256 caseId, address finder) external;
+    /// @param finderIndex Index of the finder in the finders array
+    function resolveCase(uint256 caseId, uint256 finderIndex) external;
     
     /// @notice Cancel case and get refund
     /// @dev Only the owner of the case should be allowed to call this function
