@@ -85,6 +85,14 @@ interface LostPetInterface {
         address indexed owner,
         uint256 amount
     );
+
+    /// @notice Expiry check failed for a case
+    /// @param caseId The lost pet case ID
+    /// @param reason Description of why the check failed
+    event ExpiryCheckFailed(
+        uint256 indexed caseId, 
+        string reason
+    );
     
     // --- Function Headers ---
     
@@ -149,6 +157,11 @@ interface LostPetInterface {
     /// @param caseId The lost pet case ID
     /// @return finders Array of addresses that submitted as finders
     function getFinders(uint256 caseId) external view returns (address[] memory finders);
+
+    /// @notice Get number of finders for a case
+    /// @param caseId The lost pet case ID
+    /// @return finderCount Number of finders submitted for this case
+    function getFinderCount(uint256 caseId) external view returns (uint256 finderCount);
     
     /// @notice Check if an address is a finder for a specific case
     /// @param caseId The lost pet case ID
@@ -211,4 +224,8 @@ interface LostPetInterface {
     /// @param caseId The lost pet case ID
     /// @return isFunded True if contract holds sufficient ETH for bounty
     function isCaseFunded(uint256 caseId) external view returns (bool isFunded);
+    
+    /// @notice Get active cases (unresolved, uncancelled, not expired)
+    /// @return activeCases Array of active case IDs
+    function getActiveCases() external view returns (uint256[] memory activeCases);
 }
