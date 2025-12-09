@@ -16,6 +16,7 @@ interface LostPetInterface {
         bool isCancelled;
         uint256 createdAt;
         uint256 expiresAt;
+        mapping(address => string) finderEvidence;
     }
 
     
@@ -39,9 +40,11 @@ interface LostPetInterface {
     /// @notice When someone submits as a finder for a case
     /// @param caseId The lost pet case ID
     /// @param finder Address of the user who submitted as finder
+    /// @param evidence Proof that shows finder found pet (ex: photo link)
     event FinderSubmitted(
         uint256 indexed caseId, 
-        address indexed finder
+        address indexed finder,
+        string evidence
     );
 
     /// @notice Owner resolves the case and pays out the bounty 
@@ -112,7 +115,8 @@ interface LostPetInterface {
     // PUBLIC FUNCTIONS
     /// @notice Submit yourself as a finder for a case
     /// @param caseId The lost pet case ID
-    function submitAsFinder(uint256 caseId) external;
+    /// @param evidence Proof that shows finder found pet (ex: photo link)
+    function submitAsFinder(uint256 caseId, string calldata evidence) external;
     
     /// @notice Check and process expired cases
     /// @param caseId The lost pet case ID
@@ -162,6 +166,15 @@ interface LostPetInterface {
         external 
         view 
         returns (address[] memory finders);
+
+    /// @notice View the evidence submitted by a specific finder
+    /// @param caseId The lost pet case ID
+    /// @param finder Address of a finder to check
+    /// @return evidence The string containing the evidence submitted by the finder
+    function getFinderEvidence(uint256 caseID, address finder)
+        external
+        view
+        returns (string memory evidence);
     
     // VIEW FUNCTIONS - DETAILED (Higher gas)
     /// @notice Get full case details (higher gas)
