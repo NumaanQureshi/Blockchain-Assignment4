@@ -271,6 +271,7 @@ contract LostPet {
     
     /**
      * @notice Get paginated finders (gas efficient for large lists)
+     * @dev Returns empty array instead of reverting when startIndex is out-of-range.
      */
     function getFindersPaginated(uint256 caseId, uint256 startIndex, uint256 count) 
         external 
@@ -278,13 +279,17 @@ contract LostPet {
         returns (address[] memory finders) 
     {
         require(caseId < nextCaseId, "Case does not exist");
-        require(startIndex < caseFinders[caseId].length, "Invalid start index");
-        
-        uint256 endIndex = startIndex + count;
-        if (endIndex > caseFinders[caseId].length) {
-            endIndex = caseFinders[caseId].length;
+
+        uint256 length = caseFinders[caseId].length;
+        if (count == 0 || startIndex >= length) {
+            return new address[](0);
         }
-        
+
+        uint256 endIndex = startIndex + count;
+        if (endIndex > length) {
+            endIndex = length;
+        }
+
         finders = new address[](endIndex - startIndex);
         for (uint256 i = startIndex; i < endIndex; i++) {
             finders[i - startIndex] = caseFinders[caseId][i];
