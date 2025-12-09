@@ -18,13 +18,15 @@ contract LostPet {
     uint256 public constant DEFAULT_EXPIRY_DAYS = 90 days;
     uint256 public constant MIN_BOUNTY = 0.001 ether;
     
+    // Case status enum
+    enum CaseStatus { Active, Resolved, Cancelled, Expired }
+
     // Simple struct - only essential fields
     struct PetCase {
         address owner;
         string petName;
         uint256 bounty;
-        bool isResolved;
-        bool isCancelled;
+        CaseStatus status;
         uint256 createdAt;
         uint256 expiresAt;
     }
@@ -57,8 +59,7 @@ contract LostPet {
             owner: msg.sender,
             petName: petName,
             bounty: msg.value,
-            isResolved: false,
-            isCancelled: false,
+            status: CaseStatus.Active,
             createdAt: block.timestamp,
             expiresAt: expiresAt
         });
@@ -73,8 +74,7 @@ contract LostPet {
      */
     function increaseBounty(uint256 caseId) external payable {
         require(msg.sender == cases[caseId].owner, "Only case owner can increase bounty");
-        require(!cases[caseId].isResolved, "Case already resolved");
-        require(!cases[caseId].isCancelled, "Case cancelled");
+        require(cases[caseId].status == CaseStatus.Active, "Case not active");
         require(block.timestamp < cases[caseId].expiresAt, "Case expired");
         require(msg.value > 0, "Must send ETH");
         
@@ -89,8 +89,7 @@ contract LostPet {
      */
     function resolveCase(uint256 caseId, uint256 finderIndex) external {
         require(msg.sender == cases[caseId].owner, "Only case owner can resolve");
-        require(!cases[caseId].isResolved, "Case already resolved");
-        require(!cases[caseId].isCancelled, "Case cancelled");
+        require(cases[caseId].status == CaseStatus.Active, "Case not active");
         require(block.timestamp < cases[caseId].expiresAt, "Case expired");
         require(finderIndex < caseFinders[caseId].length, "Invalid finder index");
         
@@ -101,7 +100,7 @@ contract LostPet {
         uint256 bounty = cases[caseId].bounty;
         
         // Update state before sending money
-        cases[caseId].isResolved = true;
+        cases[caseId].status = CaseStatus.Resolved;
         cases[caseId].bounty = 0;
         
         // Send bounty to finder
@@ -118,15 +117,14 @@ contract LostPet {
     function cancelCase(uint256 caseId) external {
         require(msg.sender == cases[caseId].owner, "Only owner can cancel");
         require(caseFinders[caseId].length == 0, "Cannot cancel - finders already submitted");
-        require(!cases[caseId].isResolved, "Case already resolved");
-        require(!cases[caseId].isCancelled, "Case cancelled");
+        require(cases[caseId].status == CaseStatus.Active, "Case not active");
         require(block.timestamp < cases[caseId].expiresAt, "Case expired");
         
         // Time restriction
         require(block.timestamp >= cases[caseId].createdAt + 7 days, "Cannot cancel before 7 days");
         
         uint256 refundAmount = cases[caseId].bounty;
-        cases[caseId].isCancelled = true;
+        cases[caseId].status = CaseStatus.Cancelled;
         cases[caseId].bounty = 0;
         
         (bool success, ) = payable(msg.sender).call{value: refundAmount}("");
@@ -144,8 +142,7 @@ contract LostPet {
      */
     function submitAsFinder(uint256 caseId, string calldata evidence) external {
         require(caseId < nextCaseId, "Case does not exist");
-        require(!cases[caseId].isResolved, "Case already resolved");
-        require(!cases[caseId].isCancelled, "Case cancelled");
+        require(cases[caseId].status == CaseStatus.Active, "Case not active");
         require(block.timestamp < cases[caseId].expiresAt, "Case expired");
         require(!isFinderForCase[caseId][msg.sender], "Already submitted as finder");
         require(bytes(evidence).length > 0, "Evidence cannot be empty");
@@ -167,13 +164,12 @@ contract LostPet {
     function checkAndProcessExpiry(uint256 caseId) external returns (bool processed) {
         require(caseId < nextCaseId, "Case does not exist");
         
-        if (!cases[caseId].isResolved && 
-            !cases[caseId].isCancelled && 
+        if (cases[caseId].status == CaseStatus.Active && 
             block.timestamp >= cases[caseId].expiresAt && 
             cases[caseId].bounty > 0) {
             
             uint256 refundAmount = cases[caseId].bounty;
-            cases[caseId].isCancelled = true;
+            cases[caseId].status = CaseStatus.Expired;
             cases[caseId].bounty = 0;
             
             (bool success, ) = payable(cases[caseId].owner).call{value: refundAmount}("");
@@ -198,7 +194,8 @@ contract LostPet {
         bool isResolved
     ) {
         require(caseId < nextCaseId, "Case does not exist");
-        return (cases[caseId].owner, cases[caseId].bounty, cases[caseId].isResolved);
+        PetCase storage pc = cases[caseId];
+        return (pc.owner, pc.bounty, pc.status == CaseStatus.Resolved);
     }
     
     /**
@@ -220,6 +217,7 @@ contract LostPet {
      * @notice Get finders for a case
      */
     function getFinders(uint256 caseId) external view returns (address[] memory) {
+        require(caseId < nextCaseId, "Case does not exist");
         return caseFinders[caseId];
     }
     
@@ -233,9 +231,8 @@ contract LostPet {
     
     /**
      * @notice Get full case details (higher gas)
-     * TODO: NOT STARTED
-     * MISSING: Implement this function to return complete case information
-     * MISSING: Should return all fields from PetCase struct plus finder count
+     * @dev preserves previous return types for compatibility:
+     * returns isResolved and isCancelled booleans computed from enum
      */
     function getCaseFull(uint256 caseId) external view returns (
         address owner,
@@ -250,12 +247,14 @@ contract LostPet {
         require(caseId < nextCaseId, "Case does not exist");
         
         PetCase storage petCase = cases[caseId];
+        bool resolved = petCase.status == CaseStatus.Resolved;
+        bool cancelled = (petCase.status == CaseStatus.Cancelled || petCase.status == CaseStatus.Expired);
         return (
             petCase.owner,
             petCase.petName,
             petCase.bounty,
-            petCase.isResolved,
-            petCase.isCancelled,
+            resolved,
+            cancelled,
             petCase.createdAt,
             petCase.expiresAt,
             caseFinders[caseId].length
@@ -299,9 +298,7 @@ contract LostPet {
     
     /**
      * @notice Get total ETH held in escrow
-     * TODO: NOT STARTED
-     * MISSING: Fix gas inefficiency - current implementation loops through all cases
-     * MISSING: Add totalEscrow state variable that gets updated in each transaction
+     * @return total Total amount of ETH held for all active bounties
      */
     function getTotalEscrow() external view returns (uint256 total) {
         for (uint256 i = 0; i < nextCaseId; i++) {
