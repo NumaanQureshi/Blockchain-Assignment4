@@ -104,8 +104,8 @@ interface LostPetInterface {
     /// @notice Resolve case and pay bounty to a finder
     /// @dev Only case owner can call this function
     /// @param caseId The lost pet case ID
-    /// @param finderIndex Index of the finder in the finders array
-    function resolveCase(uint256 caseId, uint256 finderIndex) external;
+    /// @param finder Address of the finder who will receive the bounty 
+    function resolveCase(uint256 caseId, address finder) external;
     
     /// @notice Cancel case and get refund
     /// @dev Only the owner of the case should be allowed to call this function
@@ -171,7 +171,7 @@ interface LostPetInterface {
     /// @param caseId The lost pet case ID
     /// @param finder Address of a finder to check
     /// @return evidence The string containing the evidence submitted by the finder
-    function getFinderEvidence(uint256 caseID, address finder)
+    function getFinderEvidence(uint256 caseId, address finder)
         external
         view
         returns (string memory evidence);
