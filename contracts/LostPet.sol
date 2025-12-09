@@ -17,6 +17,7 @@ contract LostPet {
     // Constants for gas optimization
     uint256 public constant DEFAULT_EXPIRY_DAYS = 90 days;
     uint256 public constant MIN_BOUNTY = 0.001 ether;
+    uint256 public constant MIN_RESOLVE_TIME = 1 days;
     
     // Case status enum
     enum CaseStatus { Active, Resolved, Cancelled, Expired }
@@ -38,6 +39,7 @@ contract LostPet {
     event IncreaseBounty(uint256 indexed caseId, uint256 additionalAmount, uint256 newTotal);
     event CaseCancelled(uint256 indexed caseId, address indexed owner, uint256 refundAmount);
     event CaseExpired(uint256 indexed caseId, address indexed owner, uint256 refundAmount);
+    event ExpiryCheckFailed(uint256 indexed caseId, string reason);
     
     // =============================================
     // OWNER-ONLY FUNCTIONS
@@ -86,11 +88,13 @@ contract LostPet {
     /**
      * @notice Resolve case and pay bounty to a finder
      * @dev Only case owner can call this function
+     * @dev Case must exist for minimum time before resolution
      */
     function resolveCase(uint256 caseId, uint256 finderIndex) external {
         require(msg.sender == cases[caseId].owner, "Only case owner can resolve");
         require(cases[caseId].status == CaseStatus.Active, "Case not active");
         require(block.timestamp < cases[caseId].expiresAt, "Case expired");
+        require(block.timestamp >= cases[caseId].createdAt + MIN_RESOLVE_TIME, "Case too new to resolve");
         require(finderIndex < caseFinders[caseId].length, "Invalid finder index");
         
         // Wallet/Escrow check
