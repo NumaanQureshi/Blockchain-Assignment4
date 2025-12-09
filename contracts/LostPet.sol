@@ -220,6 +220,14 @@ contract LostPet {
         require(caseId < nextCaseId, "Case does not exist");
         return caseFinders[caseId];
     }
+
+    /**
+     * @notice Get number of finders for a case
+     */
+    function getFinderCount(uint256 caseId) external view returns (uint256) {
+        require(caseId < nextCaseId, "Case does not exist");
+        return caseFinders[caseId].length;
+    }
     
     /**
      * @notice Check if an address is a finder for a specific case
