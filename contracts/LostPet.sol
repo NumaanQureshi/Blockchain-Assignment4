@@ -10,22 +10,12 @@ import "../interfaces/LostPetInterface.sol";
 contract LostPet is LostPetInterface{
     // Basic state variables
     uint256 public nextCaseId;
-    mapping(uint256 => PetCase) public cases;
 
-    mapping(uint256 => address[]) public caseFinders;
-    mapping(uint256 => mapping(address => bool)) public isFinderForCase;
-    mapping(uint256 => mapping(address => string)) public finderEvidence;
-    
-    // Constants for gas optimization
-    uint256 public constant DEFAULT_EXPIRY_DAYS = 90 days;
-    uint256 public constant MIN_BOUNTY = 0.001 ether;
-    uint256 public constant MIN_RESOLVE_TIME = 1 days;
-    
     // Case status enum
     enum CaseStatus { Active, Resolved, Cancelled, Expired }
 
     // Simple struct - only essential fields
-    struct PetCase {
+    struct CaseData {
         address owner;
         string petName;
         uint256 bounty;
@@ -34,14 +24,17 @@ contract LostPet is LostPetInterface{
         uint256 expiresAt;
     }
     
-    // Only essential events
-    event CaseCreated(uint256 indexed caseId, address indexed owner, string petName, uint256 bounty, uint256 expiresAt);
-    event FinderSubmitted(uint256 indexed caseId, address indexed finder, string evidence);
-    event CaseResolved(uint256 indexed caseId, address indexed finder, uint256 bountyAmount);
-    event IncreaseBounty(uint256 indexed caseId, uint256 additionalAmount, uint256 newTotal);
-    event CaseCancelled(uint256 indexed caseId, address indexed owner, uint256 refundAmount);
-    event CaseExpired(uint256 indexed caseId, address indexed owner, uint256 refundAmount);
-    event ExpiryCheckFailed(uint256 indexed caseId, string reason);
+    mapping(uint256 => CaseData) private cases;
+
+    mapping(uint256 => address[]) private caseFinders;
+    mapping(uint256 => mapping(address => bool)) private isFinderForCase;
+    mapping(uint256 => mapping(address => string)) private finderEvidence;
+    
+    // Constants for gas optimization
+    uint256 public constant DEFAULT_EXPIRY_DAYS = 90 days;
+    uint256 public constant MIN_BOUNTY = 0.001 ether;
+    uint256 public constant MIN_RESOLVE_TIME = 1 days;
+    
     
     // =============================================
     // OWNER-ONLY FUNCTIONS
@@ -50,7 +43,7 @@ contract LostPet is LostPetInterface{
     /**
      * @notice Create a lost pet case with bounty
      */
-    function createCase(string calldata petName) external payable returns (uint256 caseId) {
+    function createCase(string calldata petName) external payable override returns (uint256 caseId) {
         require(msg.value >= MIN_BOUNTY, "Bounty must be at least 0.001 ETH");
         require(bytes(petName).length > 0, "Pet name cannot be empty");
         
@@ -59,7 +52,7 @@ contract LostPet is LostPetInterface{
         
         uint256 expiresAt = block.timestamp + DEFAULT_EXPIRY_DAYS;
         
-        cases[caseId] = PetCase({
+        cases[caseId] = CaseData({
             owner: msg.sender,
             petName: petName,
             bounty: msg.value,
@@ -69,22 +62,23 @@ contract LostPet is LostPetInterface{
         });
         
         emit CaseCreated(caseId, msg.sender, petName, msg.value, expiresAt);
-        return caseId;
     }
     
     /**
      * @notice Increase bounty for an existing case
      * @dev Only case owner can call this function
      */
-    function increaseBounty(uint256 caseId) external payable {
-        require(msg.sender == cases[caseId].owner, "Only case owner can increase bounty");
-        require(cases[caseId].status == CaseStatus.Active, "Case not active");
-        require(block.timestamp < cases[caseId].expiresAt, "Case expired");
+    function increaseBounty(uint256 caseId) external payable override{
+        CaseData storage c = cases[caseId];
+
+        require(msg.sender == c.owner, "Only case owner can increase bounty");
+        require(c.status == CaseStatus.Active, "Case not active");
+        require(block.timestamp < c.expiresAt, "Case expired");
         require(msg.value > 0, "Must send ETH");
         
-        cases[caseId].bounty += msg.value;
+        c.bounty += msg.value;
         
-        emit IncreaseBounty(caseId, msg.value, cases[caseId].bounty);
+        emit IncreaseBounty(caseId, msg.value, c.bounty);
     }
     
     /**
@@ -92,22 +86,24 @@ contract LostPet is LostPetInterface{
      * @dev Only case owner can call this function
      * @dev Case must exist for minimum time before resolution
      */
-    function resolveCase(uint256 caseId, uint256 finderIndex) external {
-        require(msg.sender == cases[caseId].owner, "Only case owner can resolve");
-        require(cases[caseId].status == CaseStatus.Active, "Case not active");
-        require(block.timestamp < cases[caseId].expiresAt, "Case expired");
-        require(block.timestamp >= cases[caseId].createdAt + MIN_RESOLVE_TIME, "Case too new to resolve");
+    function resolveCase(uint256 caseId, uint256 finderIndex) external override{
+        CaseData storage c = cases[caseId];
+
+        require(msg.sender == c.owner, "Only case owner can resolve");
+        require(c.status == CaseStatus.Active, "Case not active");
+        require(block.timestamp < c.expiresAt, "Case expired");
+        require(block.timestamp >= c.createdAt + MIN_RESOLVE_TIME, "Case too new to resolve");
         require(finderIndex < caseFinders[caseId].length, "Invalid finder index");
         
         // Wallet/Escrow check
-        require(address(this).balance >= cases[caseId].bounty, "Insufficient contract balance");
+        require(address(this).balance >= c.bounty, "Insufficient contract balance");
         
         address finder = caseFinders[caseId][finderIndex];
-        uint256 bounty = cases[caseId].bounty;
+        uint256 bounty = c.bounty;
         
         // Update state before sending money
-        cases[caseId].status = CaseStatus.Resolved;
-        cases[caseId].bounty = 0;
+        c.status = CaseStatus.Resolved;
+        c.bounty = 0;
         
         // Send bounty to finder
         (bool success, ) = payable(finder).call{value: bounty}("");
@@ -120,18 +116,20 @@ contract LostPet is LostPetInterface{
      * @notice Cancel case and get refund
      * @dev Only case owner can call this function
      */
-    function cancelCase(uint256 caseId) external {
-        require(msg.sender == cases[caseId].owner, "Only owner can cancel");
+    function cancelCase(uint256 caseId) external override{
+        CaseData storage c = cases[caseId];
+
+        require(msg.sender == c.owner, "Only owner can cancel");
         require(caseFinders[caseId].length == 0, "Cannot cancel - finders already submitted");
-        require(cases[caseId].status == CaseStatus.Active, "Case not active");
-        require(block.timestamp < cases[caseId].expiresAt, "Case expired");
+        require(c.status == CaseStatus.Active, "Case not active");
+        require(block.timestamp < c.expiresAt, "Case expired");
         
         // Time restriction
-        require(block.timestamp >= cases[caseId].createdAt + 7 days, "Cannot cancel before 7 days");
+        require(block.timestamp >= c.createdAt + 7 days, "Cannot cancel before 7 days");
         
-        uint256 refundAmount = cases[caseId].bounty;
-        cases[caseId].status = CaseStatus.Cancelled;
-        cases[caseId].bounty = 0;
+        uint256 refundAmount = c.bounty;
+        c.status = CaseStatus.Cancelled;
+        c.bounty = 0;
         
         (bool success, ) = payable(msg.sender).call{value: refundAmount}("");
         require(success, "Refund failed");
@@ -146,10 +144,12 @@ contract LostPet is LostPetInterface{
     /**
      * @notice Submit yourself as a finder for a case
      */
-    function submitAsFinder(uint256 caseId, string calldata evidence) external {
+    function submitAsFinder(uint256 caseId, string calldata evidence) external override{
         require(caseId < nextCaseId, "Case does not exist");
-        require(cases[caseId].status == CaseStatus.Active, "Case not active");
-        require(block.timestamp < cases[caseId].expiresAt, "Case expired");
+        CaseData storage c = cases[caseId];
+
+        require(c.status == CaseStatus.Active, "Case not active");
+        require(block.timestamp < c.expiresAt, "Case expired");
         require(!isFinderForCase[caseId][msg.sender], "Already submitted as finder");
         require(bytes(evidence).length > 0, "Evidence cannot be empty");
         
@@ -167,24 +167,36 @@ contract LostPet is LostPetInterface{
     /**
      * @notice Check and process expired cases
      */
-    function checkAndProcessExpiry(uint256 caseId) public returns (bool processed) {
+    function checkAndProcessExpiry(uint256 caseId) public override returns (bool processed) {
         require(caseId < nextCaseId, "Case does not exist");
+        CaseData storage c = cases[caseId];
         
-        if (cases[caseId].status == CaseStatus.Active && 
-            block.timestamp >= cases[caseId].expiresAt && 
-            cases[caseId].bounty > 0) {
+        if (c.status == CaseStatus.Active && 
+            block.timestamp >= c.expiresAt && 
+            c.bounty > 0) {
             
-            uint256 refundAmount = cases[caseId].bounty;
-            cases[caseId].status = CaseStatus.Expired;
-            cases[caseId].bounty = 0;
+            uint256 refundAmount = c.bounty;
+            c.status = CaseStatus.Expired;
+            c.bounty = 0;
             
-            (bool success, ) = payable(cases[caseId].owner).call{value: refundAmount}("");
+            (bool success, ) = payable(c.owner).call{value: refundAmount}("");
             require(success, "Refund failed");
             
-            emit CaseExpired(caseId, cases[caseId].owner, refundAmount);
+            emit CaseExpired(caseId, c.owner, refundAmount);
             return true;
         }
         return false;
+    }
+
+    /**
+     * @notice Batch check multiple cases for expiry
+     */
+    function batchCheckExpiry(uint256[] calldata caseIds) external override returns (uint256 processedCount) {
+        for (uint256 i = 0; i < caseIds.length; i++) {
+            if (checkAndProcessExpiry(caseIds[i])) {
+                processedCount++;
+            }
+        }
     }
     
     // =============================================
@@ -194,27 +206,24 @@ contract LostPet is LostPetInterface{
     /**
      * @notice Get basic case info (low gas)
      */
-    function getCaseBasic(uint256 caseId) external view returns (
-        address owner,
-        uint256 bounty,
-        bool isResolved
-    ) {
+    function getCaseBasic(uint256 caseId) external view override returns (address owner, uint256 bounty, bool isResolved) {
         require(caseId < nextCaseId, "Case does not exist");
-        PetCase storage pc = cases[caseId];
-        return (pc.owner, pc.bounty, pc.status == CaseStatus.Resolved);
+        CaseData storage c = cases[caseId];
+
+        return (c.owner, c.bounty, c.status == CaseStatus.Resolved);
     }
     
     /**
      * @notice Get total number of cases
      */
-    function getTotalCases() external view returns (uint256) {
+    function getTotalCases() external view override returns (uint256) {
         return nextCaseId;
     }
     
     /**
      * @notice Check if case is expired
      */
-    function isCaseExpired(uint256 caseId) external view returns (bool) {
+    function isCaseExpired(uint256 caseId) external view override returns (bool) {
         require(caseId < nextCaseId, "Case does not exist");
         return block.timestamp >= cases[caseId].expiresAt;
     }
@@ -222,7 +231,7 @@ contract LostPet is LostPetInterface{
     /**
      * @notice Get finders for a case
      */
-    function getFinders(uint256 caseId) external view returns (address[] memory) {
+    function getFinders(uint256 caseId) external view override returns (address[] memory) {
         require(caseId < nextCaseId, "Case does not exist");
         return caseFinders[caseId];
     }
@@ -230,7 +239,7 @@ contract LostPet is LostPetInterface{
     /**
      * @notice Get number of finders for a case
      */
-    function getFinderCount(uint256 caseId) external view returns (uint256) {
+    function getFinderCount(uint256 caseId) external view override returns (uint256) {
         require(caseId < nextCaseId, "Case does not exist");
         return caseFinders[caseId].length;
     }
@@ -238,52 +247,16 @@ contract LostPet is LostPetInterface{
     /**
      * @notice Check if an address is a finder for a specific case
      */
-    function isFinder(uint256 caseId, address finder) external view returns (bool) {
+    function isFinder(uint256 caseId, address finder) external view override returns (bool) {
         require(caseId < nextCaseId, "Case does not exist");
         return isFinderForCase[caseId][finder];
-    }
-    
-    /**
-     * @notice Get full case details (higher gas)
-     * @dev preserves previous return types for compatibility:
-     * returns isResolved and isCancelled booleans computed from enum
-     */
-    function getCaseFull(uint256 caseId) external view returns (
-        address owner,
-        string memory petName,
-        uint256 bounty,
-        bool isResolved,
-        bool isCancelled,
-        uint256 createdAt,
-        uint256 expiresAt,
-        uint256 finderCount
-    ) {
-        require(caseId < nextCaseId, "Case does not exist");
-        
-        PetCase storage petCase = cases[caseId];
-        bool resolved = petCase.status == CaseStatus.Resolved;
-        bool cancelled = (petCase.status == CaseStatus.Cancelled || petCase.status == CaseStatus.Expired);
-        return (
-            petCase.owner,
-            petCase.petName,
-            petCase.bounty,
-            resolved,
-            cancelled,
-            petCase.createdAt,
-            petCase.expiresAt,
-            caseFinders[caseId].length
-        );
     }
     
     /**
      * @notice Get paginated finders (gas efficient for large lists)
      * @dev Returns empty array instead of reverting when startIndex is out-of-range.
      */
-    function getFindersPaginated(uint256 caseId, uint256 startIndex, uint256 count) 
-        external 
-        view 
-        returns (address[] memory finders) 
-    {
+    function getFindersPaginated(uint256 caseId, uint256 startIndex, uint256 count) external view override returns (address[] memory finders){
         require(caseId < nextCaseId, "Case does not exist");
 
         uint256 length = caseFinders[caseId].length;
@@ -300,40 +273,68 @@ contract LostPet is LostPetInterface{
         for (uint256 i = startIndex; i < endIndex; i++) {
             finders[i - startIndex] = caseFinders[caseId][i];
         }
-        return finders;
     }
 
     /**
      * @notice View the evidence submitted by a specific finder
      */
-    function getFinderEvidence(uint256 caseId, address finder)
-        external
-        view
-        returns (string memory evidence)
-    {
+    function getFinderEvidence(uint256 caseId, address finder) external view override returns (string memory){
         require(caseId < nextCaseId, "Case does not exist");
         return finderEvidence[caseId][finder];
+    }
+
+    /**
+     * @notice Get full case details (higher gas)
+     * @dev preserves previous return types for compatibility:
+     * returns isResolved and isCancelled booleans computed from enum
+     */
+    function getCaseFull(uint256 caseId) external view override returns (
+        address owner,
+        string memory petName,
+        uint256 bounty,
+        bool isResolved,
+        bool isCancelled,
+        uint256 createdAt,
+        uint256 expiresAt,
+        uint256 finderCount
+    ) {
+        require(caseId < nextCaseId, "Case does not exist");
+        CaseData storage c = cases[caseId];
+        uint256 count = caseFinders[caseId].length;
+
+        bool resolved = c.status == CaseStatus.Resolved;
+        bool cancelled = (c.status == CaseStatus.Cancelled || c.status == CaseStatus.Expired);
+
+        return (
+            c.owner,
+            c.petName,
+            c.bounty,
+            resolved,
+            cancelled,
+            c.createdAt,
+            c.expiresAt,
+            count
+        );
     }
     
     /**
      * @notice Get total ETH held in escrow
      * @return total Total amount of ETH held for all active bounties
      */
-    function getTotalEscrow() external view returns (uint256 total) {
+    function getTotalEscrow() external view override returns (uint256 total) {
         for (uint256 i = 0; i < nextCaseId; i++) {
             if (cases[i].status == CaseStatus.Active) {
                 total += cases[i].bounty;
             }
         }
-        return total;
     }
     
     /**
      * @notice Get escrow for specific case
      */
-    function getCaseEscrow(uint256 caseId) external view returns (uint256) {
+    function getCaseEscrow(uint256 caseId) external view override returns (uint256) {
         require(caseId < nextCaseId, "Case does not exist");
-        
+
         if (cases[caseId].status != CaseStatus.Active) {
             return 0;
         }
@@ -343,22 +344,11 @@ contract LostPet is LostPetInterface{
     /**
      * @notice Verify case has sufficient funds
      */
-    function isCaseFunded(uint256 caseId) external view returns (bool) {
+    function isCaseFunded(uint256 caseId) external view override returns (bool) {
         require(caseId < nextCaseId, "Case does not exist");
         return address(this).balance >= cases[caseId].bounty;
     }
     
-    /**
-     * @notice Batch check multiple cases for expiry
-     */
-    function batchCheckExpiry(uint256[] calldata caseIds) external returns (uint256 processedCount) {
-        for (uint256 i = 0; i < caseIds.length; i++) {
-            if (checkAndProcessExpiry(caseIds[i])) {
-                processedCount++;
-            }
-        }
-        return processedCount;
-    }
     
     /**
      * @notice Get active cases (unresolved, uncancelled, not expired)
@@ -366,7 +356,7 @@ contract LostPet is LostPetInterface{
      * MISSING: Implement this function to return array of active case IDs
      * MISSING: Should filter cases based on isResolved, isCancelled, and expiresAt
      */
-    function getActiveCases() external view returns (uint256[] memory) {
+    function getActiveCases() external view override returns (uint256[] memory) {
         uint256 activeCount = 0;
         
         // First pass: count active cases
