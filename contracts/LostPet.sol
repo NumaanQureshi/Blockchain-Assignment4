@@ -161,7 +161,7 @@ contract LostPet {
     /**
      * @notice Check and process expired cases
      */
-    function checkAndProcessExpiry(uint256 caseId) external returns (bool processed) {
+    function checkAndProcessExpiry(uint256 caseId) public returns (bool processed) {
         require(caseId < nextCaseId, "Case does not exist");
         
         if (cases[caseId].status == CaseStatus.Active && 
@@ -315,7 +315,7 @@ contract LostPet {
      */
     function getTotalEscrow() external view returns (uint256 total) {
         for (uint256 i = 0; i < nextCaseId; i++) {
-            if (!cases[i].isResolved && !cases[i].isCancelled) {
+            if (cases[i].status == CaseStatus.Active) {
                 total += cases[i].bounty;
             }
         }
@@ -328,7 +328,7 @@ contract LostPet {
     function getCaseEscrow(uint256 caseId) external view returns (uint256) {
         require(caseId < nextCaseId, "Case does not exist");
         
-        if (cases[caseId].isResolved || cases[caseId].isCancelled) {
+        if (cases[caseId].status != CaseStatus.Active) {
             return 0;
         }
         return cases[caseId].bounty;
@@ -365,7 +365,7 @@ contract LostPet {
         
         // First pass: count active cases
         for (uint256 i = 0; i < nextCaseId; i++) {
-            if (!cases[i].isResolved && !cases[i].isCancelled && block.timestamp < cases[i].expiresAt) {
+            if (cases[i].status == CaseStatus.Active && block.timestamp < cases[i].expiresAt) {
                 activeCount++;
             }
         }
@@ -375,7 +375,7 @@ contract LostPet {
         uint256 currentIndex = 0;
         
         for (uint256 i = 0; i < nextCaseId; i++) {
-            if (!cases[i].isResolved && !cases[i].isCancelled && block.timestamp < cases[i].expiresAt) {
+            if (cases[i].status == CaseStatus.Active && block.timestamp < cases[i].expiresAt) {
                 activeCases[currentIndex] = i;
                 currentIndex++;
             }
@@ -391,7 +391,7 @@ contract LostPet {
      * MISSING: Need to add mapping(address => uint256[]) ownerCases
      * MISSING: Update mapping in createCase function
      */
-    function getCasesByOwner(address owner) external view returns (uint256[] memory) {
-        revert("Not implemented yet");
-    }
+    // function getCasesByOwner(address owner) external view returns (uint256[] memory) {
+    //     revert("Not implemented yet");
+    // }
 }
