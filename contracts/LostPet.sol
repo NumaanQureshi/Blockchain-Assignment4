@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
+import "../interfaces/LostPetInterface.sol";
+
 /**
  * @title LostPet
  * @notice Simple contract for lost pet bounties
  */
-contract LostPet {
+contract LostPet is LostPetInterface{
     // Basic state variables
     uint256 public nextCaseId;
     mapping(uint256 => PetCase) public cases;
