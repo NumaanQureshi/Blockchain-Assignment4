@@ -376,7 +376,7 @@ contract LostPet is LostPetInterface{
     /**
      * @notice Get cases created by a specific owner
      */
-    function getCasesByOwner(address owner) external view override returns (uint256[] memory) {
+    function getCasesByOwner(address owner) external view returns (uint256[] memory) {
         return ownerCases[owner];
     }
 }
