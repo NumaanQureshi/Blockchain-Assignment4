@@ -194,8 +194,7 @@ interface LostPetInterface {
     /// @return owner Address of the case owner
     /// @return petName Name of the lost pet
     /// @return bounty The bounty amount of the case
-    /// @return isResolved Has the case been resolved or not
-    /// @return isCancelled Has the case been cancelled or not
+    /// @return status The current status of the case (Active, Resolved, Cancelled, Expired)
     /// @return createdAt When the case was created
     /// @return expiresAt When the case expires
     /// @return finderCount Number of finders submitted for this case
@@ -203,8 +202,7 @@ interface LostPetInterface {
         address owner,
         string memory petName,
         uint256 bounty,
-        bool isResolved,
-        bool isCancelled,
+        uint8 status,
         uint256 createdAt,
         uint256 expiresAt,
         uint256 finderCount

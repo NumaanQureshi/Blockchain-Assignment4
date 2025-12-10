@@ -285,15 +285,13 @@ contract LostPet is LostPetInterface{
 
     /**
      * @notice Get full case details (higher gas)
-     * @dev preserves previous return types for compatibility:
-     * returns isResolved and isCancelled booleans computed from enum
+     * @dev Returns the case status as enum value (0=Active, 1=Resolved, 2=Cancelled, 3=Expired)
      */
     function getCaseFull(uint256 caseId) external view override returns (
         address owner,
         string memory petName,
         uint256 bounty,
-        bool isResolved,
-        bool isCancelled,
+        uint8 status,
         uint256 createdAt,
         uint256 expiresAt,
         uint256 finderCount
@@ -302,15 +300,11 @@ contract LostPet is LostPetInterface{
         CaseData storage c = cases[caseId];
         uint256 count = caseFinders[caseId].length;
 
-        bool resolved = c.status == CaseStatus.Resolved;
-        bool cancelled = (c.status == CaseStatus.Cancelled || c.status == CaseStatus.Expired);
-
         return (
             c.owner,
             c.petName,
             c.bounty,
-            resolved,
-            cancelled,
+            uint8(c.status),
             c.createdAt,
             c.expiresAt,
             count
