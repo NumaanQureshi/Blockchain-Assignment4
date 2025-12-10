@@ -43,10 +43,64 @@ contract("LostPet", (accounts) => {
       assert.equal(receipt.logs[0].args.bounty.toString(), ONE_ETHER);
     });
 
-    // TODO: Test incrementing case IDs correctly
-    // TODO: Test rejection of cases with bounty below minimum (0.001 ETH)
-    // TODO: Test rejection of cases with empty pet name
-    // TODO: Test that expiry date is set correctly to 90 days from creation
+    it("should increment case IDs properly", async () => {
+      const receipt1 = await lostPetInstance.createCase("Fluffy", {
+        from: owner,
+        value: ONE_ETHER
+      });
+      assert.equal(receipt1.logs[0].args.caseId, 0, "First case should have ID 0");
+
+      const receipt2 = await lostPetInstance.createCase("Luna", {
+        from: owner,
+        value: ONE_ETHER
+      });
+      assert.equal(receipt2.logs[0].args.caseId, 1, "Second case should have ID 1");
+
+      const totalCases = await lostPetInstance.getTotalCases();
+      assert.equal(totalCases.toString(), "2", "Should be 2 cases in total");
+    });
+    
+    it("should reject cases where bounty is below minimum (0.001 ETH)", async () => {
+      const belowMinBounty = web3.utils.toWei("0.0005", "ether");
+     
+      try {
+        await lostPetInstance.createCase("Ruby", { 
+          from: owner, 
+          value: belowMinBounty 
+        });
+        assert.fail("Should have thrown error");
+      } catch (error) {
+        assert.include(error.message, "Bounty must be at least 0.001 ETH");
+      }
+    });
+    
+    it("should reject cases with empty pet names", async () => {
+      try {
+        await lostPetInstance.createCase ("", {
+          from: owner,
+          value: ONE_ETHER
+        });
+        assert.fail("Should have thrown error");
+      } catch(error) {
+        assert.include(error.message, "Pet name cannot be empty");
+      }
+    });
+
+    it("should set expiry date to 90 days from creation date", async () => {
+      const receipt = await lostPetInstance.createCase("Fluffy", {
+        from: owner,
+        value: ONE_ETHER
+      });
+
+      const caseId = receipt.logs[0].args.caseId;
+      const caseDetails = await lostPetInstance.getCaseFull(caseId);
+
+      const createdAt = caseDetails[4];
+      const expiresAt = caseDetails[5];
+      const expectedExpiryDate = BigInt(createdAt.toString()) + BigInt(DEFAULT_EXPIRY_DAYS);
+
+      assert.equal(expiresAt.toString(), expectedExpiryDate.toString(), "Expiry date should be 90 days from creation");
+    })
   });
 
 
