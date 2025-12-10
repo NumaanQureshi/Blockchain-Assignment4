@@ -206,17 +206,107 @@ contract("LostPet", (accounts) => {
   // Finder Submission
 
 
+  // Tests finder submission features by showing:
+  // - Finders can submit evidence and `FinderSubmitted` event is emitted
+  // - Multiple finders are tracked correctly for the same case
+  // - Duplicate submissions by the same address are rejected
+  // - Submissions with empty evidence are rejected
+  // - isFinder() reports correct status
+  // - getFinderEvidence() returns the submitted evidence
   describe("Finder Submission", () => {
-    // TODO: Test allowing a finder to submit evidence
-    // TODO: Test tracking multiple finders for the same case
-    // TODO: Test rejection of duplicate finder submissions
-    // TODO: Test rejection of submissions with empty evidence
-    // TODO: Test isFinder() function returns correct status
-    // TODO: Test getFinderEvidence() retrieves correct evidence
+    it("should allow a finder to submit evidence and emit FinderSubmitted", async () => {
+      const receipt = await lostPetInstance.createCase("Fluffy", {
+        from: owner,
+        value: ONE_ETHER
+      });
+      const caseId = receipt.logs[0].args.caseId;
+
+      const evidence = "PhotoLink1";
+      const submitReceipt = await lostPetInstance.submitAsFinder(caseId, evidence, { from: finder1 });
+
+      // Event checks
+      assert.equal(submitReceipt.logs[0].event, "FinderSubmitted");
+      assert.equal(submitReceipt.logs[0].args.caseId.toString(), caseId.toString());
+      assert.equal(submitReceipt.logs[0].args.finder, finder1);
+      assert.equal(submitReceipt.logs[0].args.evidence, evidence);
+
+      // Finder recorded
+      const finders = await lostPetInstance.getFinders(caseId);
+      assert.equal(finders.length, 1, "Should have 1 finder");
+      assert.equal(finders[0], finder1, "Finder address should match");
+    });
+
+    it("should track multiple finders for the same case", async () => {
+      const receipt = await lostPetInstance.createCase("Fluffy", {
+        from: owner,
+        value: ONE_ETHER
+      });
+      const caseId = receipt.logs[0].args.caseId;
+
+      await lostPetInstance.submitAsFinder(caseId, "E1", { from: finder1 });
+      await lostPetInstance.submitAsFinder(caseId, "E2", { from: finder2 });
+
+      const finders = await lostPetInstance.getFinders(caseId);
+      assert.equal(finders.length, 2, "Should have 2 finders");
+      assert.equal(finders[0], finder1);
+      assert.equal(finders[1], finder2);
+    });
+
+    it("should reject duplicate finder submissions from same address", async () => {
+      const receipt = await lostPetInstance.createCase("Fluffy", {
+        from: owner,
+        value: ONE_ETHER
+      });
+      const caseId = receipt.logs[0].args.caseId;
+
+      await lostPetInstance.submitAsFinder(caseId, "E1", { from: finder1 });
+
+      try {
+        await lostPetInstance.submitAsFinder(caseId, "E1-dup", { from: finder1 });
+        assert.fail("Should have thrown error");
+      } catch (error) {
+        assert.include(error.message, "Already submitted as finder");
+      }
+    });
+
+    it("should reject submissions with empty evidence", async () => {
+      const receipt = await lostPetInstance.createCase("Fluffy", {
+        from: owner,
+        value: ONE_ETHER
+      });
+      const caseId = receipt.logs[0].args.caseId;
+
+      try {
+        await lostPetInstance.submitAsFinder(caseId, "", { from: finder1 });
+        assert.fail("Should have thrown error");
+      } catch (error) {
+        assert.include(error.message, "Evidence cannot be empty");
+      }
+    });
+
+    it("should report finder status with isFinder() and return evidence via getFinderEvidence()", async () => {
+      const receipt = await lostPetInstance.createCase("Fluffy", {
+        from: owner,
+        value: ONE_ETHER
+      });
+      const caseId = receipt.logs[0].args.caseId;
+
+      const evidence = "Proof123";
+      await lostPetInstance.submitAsFinder(caseId, evidence, { from: finder1 });
+
+      const isF = await lostPetInstance.isFinder(caseId, finder1);
+      const isNotF = await lostPetInstance.isFinder(caseId, finder2);
+
+      assert.equal(isF, true, "finder1 should be a finder");
+      assert.equal(isNotF, false, "finder2 should not be a finder");
+
+      const stored = await lostPetInstance.getFinderEvidence(caseId, finder1);
+      assert.equal(stored, evidence, "Stored evidence should match submitted evidence");
+    });
   });
 
 
-  // Case Reolution
+  // Case Resolution
 
 
   describe("Case Resolution", () => {
