@@ -127,11 +127,79 @@ contract("LostPet", (accounts) => {
   // Increasing Bounty
 
 
+  // Tests increasing bounty features by showing:
+  // - Owner can increase bounty and `IncreaseBounty` event is emitted
+  // - Non-owner attempts to increase are rejected
+  // - Increase with zero ETH is rejected
+  // - Multiple increases accumulate correctly into the bounty
   describe("Increasing Bounty", () => {
-    // TODO: Test increasing bounty for an active case
-    // TODO: Test rejection of bounty increase from non-owner
-    // TODO: Test rejection of bounty increase with no ETH sent
-    // TODO: Test bounty is added correctly to existing bounty
+    it("should allow owner to increase bounty and emit IncreaseBounty event", async () => {
+      const receipt = await lostPetInstance.createCase("Fluffy", {
+        from: owner,
+        value: ONE_ETHER
+      });
+      const caseId = receipt.logs[0].args.caseId;
+
+      const addAmount = web3.utils.toWei("0.5", "ether");
+      const incReceipt = await lostPetInstance.increaseBounty(caseId, { from: owner, value: addAmount });
+
+      // Event checks
+      assert.equal(incReceipt.logs[0].event, "IncreaseBounty");
+      assert.equal(incReceipt.logs[0].args.additionalAmount.toString(), addAmount);
+
+      // New bounty should be ONE_ETHER + addAmount
+      const caseFull = await lostPetInstance.getCaseFull(caseId);
+      const expected = (BigInt(ONE_ETHER) + BigInt(addAmount)).toString();
+      assert.equal(caseFull.bounty.toString(), expected, "Bounty should be increased correctly");
+    });
+
+    it("should reject bounty increase from non-owner", async () => {
+      const receipt = await lostPetInstance.createCase("Fluffy", {
+        from: owner,
+        value: ONE_ETHER
+      });
+      const caseId = receipt.logs[0].args.caseId;
+
+      try {
+        await lostPetInstance.increaseBounty(caseId, { from: finder1, value: web3.utils.toWei("0.1", "ether") });
+        assert.fail("Should have thrown error");
+      } catch (error) {
+        assert.include(error.message, "Only case owner can increase bounty");
+      }
+    });
+
+    it("should reject bounty increase with no ETH sent", async () => {
+      const receipt = await lostPetInstance.createCase("Fluffy", {
+        from: owner,
+        value: ONE_ETHER
+      });
+      const caseId = receipt.logs[0].args.caseId;
+
+      try {
+        await lostPetInstance.increaseBounty(caseId, { from: owner });
+        assert.fail("Should have thrown error");
+      } catch (error) {
+        assert.include(error.message, "Must send ETH");
+      }
+    });
+
+    it("should accumulate bounty correctly after multiple increases", async () => {
+      const receipt = await lostPetInstance.createCase("Fluffy", {
+        from: owner,
+        value: ONE_ETHER
+      });
+      const caseId = receipt.logs[0].args.caseId;
+
+      const a1 = web3.utils.toWei("0.2", "ether");
+      const a2 = web3.utils.toWei("0.3", "ether");
+
+      await lostPetInstance.increaseBounty(caseId, { from: owner, value: a1 });
+      await lostPetInstance.increaseBounty(caseId, { from: owner, value: a2 });
+
+      const caseFull = await lostPetInstance.getCaseFull(caseId);
+      const expected = (BigInt(ONE_ETHER) + BigInt(a1) + BigInt(a2)).toString();
+      assert.equal(caseFull.bounty.toString(), expected, "Bounty should reflect multiple increases");
+    });
   });
 
 
@@ -279,8 +347,7 @@ contract("LostPet", (accounts) => {
       assert.equal(isExpired, false, "Should not be expired initially");
 
       // Advance time beyond expiry
-      await web3.currentProvider.send({jsonrpc: '2.0', method: 'evm_increaseTime', params: [DEFAULT_EXPIRY_DAYS + 1], id: 0}, () => {});
-      await web3.currentProvider.send({jsonrpc: '2.0', method: 'evm_mine', params: [], id: 1}, () => {});
+      await increaseTime(DEFAULT_EXPIRY_DAYS + 1);
 
       isExpired = await lostPetInstance.isCaseExpired(caseId);
       assert.equal(isExpired, true, "Should be expired after time advancement");
