@@ -25,6 +25,7 @@ contract LostPet is LostPetInterface{
     }
     
     mapping(uint256 => CaseData) private cases;
+    mapping(address => uint256[]) private ownerCases;
 
     mapping(uint256 => address[]) private caseFinders;
     mapping(uint256 => mapping(address => bool)) private isFinderForCase;
@@ -60,6 +61,8 @@ contract LostPet is LostPetInterface{
             createdAt: block.timestamp,
             expiresAt: expiresAt
         });
+        
+        ownerCases[msg.sender].push(caseId);
         
         emit CaseCreated(caseId, msg.sender, petName, msg.value, expiresAt);
     }
@@ -343,12 +346,8 @@ contract LostPet is LostPetInterface{
         return address(this).balance >= cases[caseId].bounty;
     }
     
-    
     /**
      * @notice Get active cases (unresolved, uncancelled, not expired)
-     * TODO: NOT STARTED
-     * MISSING: Implement this function to return array of active case IDs
-     * MISSING: Should filter cases based on isResolved, isCancelled, and expiresAt
      */
     function getActiveCases() external view override returns (uint256[] memory) {
         uint256 activeCount = 0;
@@ -376,12 +375,8 @@ contract LostPet is LostPetInterface{
     
     /**
      * @notice Get cases created by a specific owner
-     * TODO: NOT STARTED
-     * MISSING: Implement this function and add necessary data structures
-     * MISSING: Need to add mapping(address => uint256[]) ownerCases
-     * MISSING: Update mapping in createCase function
      */
-    // function getCasesByOwner(address owner) external view returns (uint256[] memory) {
-    //     revert("Not implemented yet");
-    // }
+    function getCasesByOwner(address owner) external view override returns (uint256[] memory) {
+        return ownerCases[owner];
+    }
 }
