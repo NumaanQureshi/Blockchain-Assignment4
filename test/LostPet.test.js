@@ -43,7 +43,12 @@ contract("LostPet", (accounts) => {
   });
 
 
-  // Creating Cases
+  // ===== Case Creation =====
+  // Tests creating cases by showing:
+  // - createCase emits CaseCreated with correct args (caseId, owner, petName, bounty)
+  // - Case IDs increment and getTotalCases() reports accurate counts
+  // - Reverts when bounty is below MIN_BOUNTY or pet name is empty
+  // - expiresAt is set to DEFAULT_EXPIRY_DAYS from creation time
 
   
   describe("Case Creation", () => {
@@ -124,14 +129,13 @@ contract("LostPet", (accounts) => {
   });
 
 
-  // Increasing Bounty
-
-
+  // ===== Increasing Bounty =====
   // Tests increasing bounty features by showing:
   // - Owner can increase bounty and `IncreaseBounty` event is emitted
   // - Non-owner attempts to increase are rejected
   // - Increase with zero ETH is rejected
   // - Multiple increases accumulate correctly into the bounty
+
   describe("Increasing Bounty", () => {
     it("should allow owner to increase bounty and emit IncreaseBounty event", async () => {
       const receipt = await lostPetInstance.createCase("Fluffy", {
@@ -203,9 +207,7 @@ contract("LostPet", (accounts) => {
   });
 
 
-  // Finder Submission
-
-
+  // ===== Finder Submission =====
   // Tests finder submission features by showing:
   // - Finders can submit evidence and `FinderSubmitted` event is emitted
   // - Multiple finders are tracked correctly for the same case
@@ -213,6 +215,7 @@ contract("LostPet", (accounts) => {
   // - Submissions with empty evidence are rejected
   // - isFinder() reports correct status
   // - getFinderEvidence() returns the submitted evidence
+
   describe("Finder Submission", () => {
     it("should allow a finder to submit evidence and emit FinderSubmitted", async () => {
       const receipt = await lostPetInstance.createCase("Fluffy", {
@@ -306,39 +309,195 @@ contract("LostPet", (accounts) => {
   });
 
 
-  // Case Resolution
-
+  // ===== Case Resolution =====
+  // Tests resolving cases by showing:
+  // - Resolve pays bounty to finder and emits CaseResolved
+  // - Status updates to Resolved and escrow cleared
+  // - Rejection when non-owner attempts resolution
+  // - Rejection for invalid finder index
+  // - Rejection when no finders exist
+  // - Bounty is transferred to the correct finder address
 
   describe("Case Resolution", () => {
-    // TODO: Test resolving a case and paying bounty to finder
-    // TODO: Test updating case status to Resolved after payment
-    // TODO: Test rejection of resolution from non-owner
-    // TODO: Test rejection of resolution with invalid finder index
-    // TODO: Test rejection of resolution if case has no finders
-    // TODO: Test that bounty is correctly transferred to finder address
+    it("should resolve a case and pay bounty to the finder, updating status", async () => {
+      const receipt = await lostPetInstance.createCase("Fluffy", {
+        from: owner,
+        value: ONE_ETHER
+      });
+      const caseId = receipt.logs[0].args.caseId;
+
+      // Submit a finder
+      await lostPetInstance.submitAsFinder(caseId, "Evidence for Fluffy", { from: finder1 });
+
+      // Advance time beyond minimum resolve time
+      await increaseTime(2 * 24 * 60 * 60);
+
+      const initialFinderBalance = await web3.eth.getBalance(finder1);
+
+      const res = await lostPetInstance.resolveCase(caseId, 0, { from: owner });
+
+      // Event check
+      assert.equal(res.logs[0].event, "CaseResolved");
+      assert.equal(res.logs[0].args.caseId.toString(), caseId.toString());
+      assert.equal(res.logs[0].args.finder, finder1);
+      assert.equal(res.logs[0].args.bountyAmount.toString(), ONE_ETHER);
+
+      // Finder balance should increase by approx bounty (ignoring tiny differences)
+      const finalFinderBalance = await web3.eth.getBalance(finder1);
+      assert(BigInt(finalFinderBalance) >= BigInt(initialFinderBalance) + BigInt(ONE_ETHER) - BigInt(web3.utils.toWei("0.001", "ether")), "Finder should receive bounty");
+
+      // Case status should be Resolved
+      const caseFull = await lostPetInstance.getCaseFull(caseId);
+      assert.equal(caseFull.status, CaseStatus.Resolved, "Case should be marked Resolved");
+    });
+
+    it("should reject resolution from non-owner", async () => {
+      const receipt = await lostPetInstance.createCase("Fluffy", {
+        from: owner,
+        value: ONE_ETHER
+      });
+      const caseId = receipt.logs[0].args.caseId;
+
+      await lostPetInstance.submitAsFinder(caseId, "Evidence", { from: finder1 });
+      await increaseTime(2 * 24 * 60 * 60);
+
+      try {
+        await lostPetInstance.resolveCase(caseId, 0, { from: finder1 });
+        assert.fail("Should have thrown error");
+      } catch (error) {
+        assert.include(error.message, "Only case owner can resolve");
+      }
+    });
+
+    it("should reject resolution with invalid finder index", async () => {
+      const receipt = await lostPetInstance.createCase("Fluffy", {
+        from: owner,
+        value: ONE_ETHER
+      });
+      const caseId = receipt.logs[0].args.caseId;
+
+      await lostPetInstance.submitAsFinder(caseId, "Evidence", { from: finder1 });
+      await increaseTime(2 * 24 * 60 * 60);
+
+      try {
+        await lostPetInstance.resolveCase(caseId, 5, { from: owner });
+        assert.fail("Should have thrown error");
+      } catch (error) {
+        assert.include(error.message, "Invalid finder index");
+      }
+    });
+
+    it("should reject resolution if case has no finders", async () => {
+      const receipt = await lostPetInstance.createCase("Fluffy", {
+        from: owner,
+        value: ONE_ETHER
+      });
+      const caseId = receipt.logs[0].args.caseId;
+
+      await increaseTime(2 * 24 * 60 * 60);
+
+      try {
+        await lostPetInstance.resolveCase(caseId, 0, { from: owner });
+        assert.fail("Should have thrown error");
+      } catch (error) {
+        assert.include(error.message, "Invalid finder index");
+      }
+    });
   });
 
 
-  // Case Cancellation
-
+  // ===== Case Cancellation =====
+  // Tests cancellation by showing:
+  // - Cannot cancel before 7 days have passed
+  // - Cannot cancel if finders already submitted
+  // - Only owner can cancel
+  // - Successful cancellation refunds owner and emits CaseCancelled
+  // - Case status updates to Cancelled after refund
 
   describe("Case Cancellation", () => {
-    // TODO: Test rejection of cancellation before 7 days have passed
-    // TODO: Test rejection of cancellation if finders already submitted
-    // TODO: Test rejection of cancellation from non-owner
-    // TODO: Test successful cancellation and refund after 7 days
-    // TODO: Test case status changes to Cancelled
+    it("should reject cancellation before 7 days have passed", async () => {
+      const receipt = await lostPetInstance.createCase("Fluffy", {
+        from: owner,
+        value: ONE_ETHER
+      });
+      const caseId = receipt.logs[0].args.caseId;
+
+      try {
+        await lostPetInstance.cancelCase(caseId, { from: owner });
+        assert.fail("Should have thrown error");
+      } catch (error) {
+        assert.include(error.message, "Cannot cancel before 7 days");
+      }
+    });
+
+    it("should reject cancellation if finders already submitted", async () => {
+      const receipt = await lostPetInstance.createCase("Fluffy", {
+        from: owner,
+        value: ONE_ETHER
+      });
+      const caseId = receipt.logs[0].args.caseId;
+
+      await lostPetInstance.submitAsFinder(caseId, "Found it", { from: finder1 });
+      await increaseTime(7 * 24 * 60 * 60 + 1);
+
+      try {
+        await lostPetInstance.cancelCase(caseId, { from: owner });
+        assert.fail("Should have thrown error");
+      } catch (error) {
+        assert.include(error.message, "Cannot cancel - finders already submitted");
+      }
+    });
+
+    it("should reject cancellation from non-owner", async () => {
+      const receipt = await lostPetInstance.createCase("Fluffy", {
+        from: owner,
+        value: ONE_ETHER
+      });
+      const caseId = receipt.logs[0].args.caseId;
+
+      await increaseTime(7 * 24 * 60 * 60 + 1);
+
+      try {
+        await lostPetInstance.cancelCase(caseId, { from: otherAccount });
+        assert.fail("Should have thrown error");
+      } catch (error) {
+        assert.include(error.message, "Only owner can cancel");
+      }
+    });
+
+    it("should allow owner to cancel after 7 days and refund bounty, updating status", async () => {
+      const initialBalance = await web3.eth.getBalance(owner);
+      const receipt = await lostPetInstance.createCase("Fluffy", {
+        from: owner,
+        value: ONE_ETHER
+      });
+      const caseId = receipt.logs[0].args.caseId;
+
+      // Advance time beyond 7 days
+      await increaseTime(7 * 24 * 60 * 60 + 1);
+
+      const cancelRes = await lostPetInstance.cancelCase(caseId, { from: owner });
+
+      // Event check
+      assert.equal(cancelRes.logs[0].event, "CaseCancelled");
+      assert.equal(cancelRes.logs[0].args.caseId.toString(), caseId.toString());
+
+      const finalBalance = await web3.eth.getBalance(owner);
+      assert(BigInt(finalBalance) > BigInt(initialBalance) - BigInt(ONE_ETHER), "Owner should receive refund");
+
+      const caseFull = await lostPetInstance.getCaseFull(caseId);
+      assert.equal(caseFull.status, CaseStatus.Cancelled, "Case status should be Cancelled");
+    });
   });
 
 
-  // Case Expiry
+  // ===== Case Expiry =====
   // This should test the following:
   // - A case's status can change to Expired
   // - Refunds are automatically sent to owner when case expires
   // - checkAndProcessExpiry() returns false for active non-expired cases, and true for expired cases
   // - batchCheckExpiry() processes multiple cases correctly
   // - isCaseExpired() view function returns correct status
-
 
   describe("Case Expiry", () => {
     it("should return false for active non-expired cases", async () => {
@@ -445,16 +604,16 @@ contract("LostPet", (accounts) => {
   });
 
 
-  // Escrow and Funding
-
+  // ===== Escrow & Funding =====
+  // Tests escrow and funding features by showing:
+  // - getTotalEscrow() sums all active bounties
+  // - getCaseEscrow() returns correct bounty for specific case
+  // - getCaseEscrow() returns 0 for resolved cases and cancelled cases
+  // - isCaseFunded() verifies sufficient contract balance
+  // - Resolutions will reject when there is an insufficient contract balance
 
   describe("Escrow & Funding", () => {
-    // Tests escrow and funding features by showing:
-    // - getTotalEscrow() sums all active bounties
-    // - getCaseEscrow() returns correct bounty for specific case
-    // - getCaseEscrow() returns 0 for resolved cases and cancelled cases
-    // - isCaseFunded() verifies sufficient contract balance
-    // - Resolutions will reject when there is an insufficient contract balance
+
     it("should sum all active bounties with getTotalEscrow()", async () => {
       await lostPetInstance.createCase("Fluffy", {
         from: owner,
@@ -532,7 +691,7 @@ contract("LostPet", (accounts) => {
   });
 
 
-  // View Functions - Basic (Low gas)
+  // ===== View Functions - Basic (Low gas) =====
   // Tests the basic view function by showing:
   // - getCaseBasic() returns owner, bounty, and isResolved status
   // - getCaseBasic() uses minimal gas
@@ -568,7 +727,7 @@ contract("LostPet", (accounts) => {
   });
 
 
-  // View Functions - Detailed (Higher gas)
+  // ===== View Functions - Detailed (Higher gas) =====
   // Tests the detailed view function by showing:
   // - getCaseFull() returns all case details
   // - getCaseFull() returns the correct case status enum value, and the finder count
@@ -606,14 +765,13 @@ contract("LostPet", (accounts) => {
   });
 
 
-  // Finder Query Functions
+  // ===== Finder Query Functions =====
   // Tests the functionality of finder related functions by showing:
   // - getFinders() returns an array of all finders for a case
   // - getFinderCount() returns the correct count
   // - isFinder() identifies finders
   // - getFindersPaginated() returns the correct page of finders
   // - getFindersPaginated() returns an empty array for out-of-range indices
-
 
   describe("Finder Query Functions", () => {
     it("should return all finders with getFinders()", async () => {
@@ -698,7 +856,7 @@ contract("LostPet", (accounts) => {
   });
 
 
-  // Active Cases
+  // ===== Active Cases =====
   // Tests the functionality of getActiveCases() by:
   // - Returning only active, non-expired cases
   // - Excludes resolved cases, cancelled cases, and expired cases
@@ -770,7 +928,7 @@ contract("LostPet", (accounts) => {
   });
 
 
-  // Error Handling and Edge Cases
+  // ===== Error Handling & Edge Cases =====
   // This should test the following:
   // - The rejection of operations on any non-existent cases
   // - Handling of multiple independent cases
@@ -817,7 +975,8 @@ contract("LostPet", (accounts) => {
     });
   });
 
-  // Gas Optimization and Efficiency
+
+  // ===== Gas Optimization and Efficiency =====
   // This should test the following:
   // - Comparison between the gas costs of getCaseBasic() and getCaseFull()
   // - Proving our test pagination function is more efficient than returning all finders
