@@ -226,4 +226,9 @@ interface LostPetInterface {
     /// @notice Get active cases (unresolved, uncancelled, not expired)
     /// @return activeCases Array of active case IDs
     function getActiveCases() external view returns (uint256[] memory activeCases);
+    
+    /// @notice Get cases created by a specific owner
+    /// @param owner Address of the case owner
+    /// @return ownerCases Array of case IDs created by this owner
+    function getCasesByOwner(address owner) external view returns (uint256[] memory ownerCases);
 }
