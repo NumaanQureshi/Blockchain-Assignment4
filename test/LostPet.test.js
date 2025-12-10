@@ -108,10 +108,73 @@ contract("LostPet", (accounts) => {
 
 
   describe("Increasing Bounty", () => {
-    // TODO: Test increasing bounty for an active case
-    // TODO: Test rejection of bounty increase from non-owner
-    // TODO: Test rejection of bounty increase with no ETH sent
-    // TODO: Test bounty is added correctly to existing bounty
+    let caseId;
+
+    beforeEach(async () => {
+      await lostPetInstance.createCase("Fluffy", {
+        from: owner,
+        value: ONE_ETHER
+      });
+      caseId = 0;
+    })
+
+    it("should allow an owner to increase bounty for an active case", async () => {
+      const additionalAmount = web3.utils.toWei("0.5", "ether");
+
+      const receipt = await lostPetInstance.increaseBounty(caseId, {
+        from: owner,
+        value: additionalAmount
+      });
+
+      assert.equal(receipt.logs.length, 1);
+      assert.equal(receipt.logs[0].event, "IncreaseBounty");
+      assert.equal(receipt.logs[0].args.additionalAmount.toString(), additionalAmount.toString());
+
+      const increasedAmount = BigInt(ONE_ETHER) + BigInt(additionalAmount);
+      assert.equal(receipt.logs[0].args.newTotal.toString(), increasedAmount.toString());
+
+      const { 1: currentBounty } = await lostPetInstance.getCaseBasic(caseId);
+      assert.equal(currentBounty.toString(), increasedAmount.toString());
+    });
+
+    it("should reject bounty increase from non-owner", async () => {
+      const additionalAmount = web3.utils.toWei("0.5", "ether");
+
+      try {
+        await lostPetInstance.increaseBounty(caseId, {
+          from: otherAccount,
+          value: additionalAmount
+        });
+        assert.fail("Should have thrown error");
+      } catch (error) {
+        assert.include(error.message, "Only case owner can increase bounty");
+      }
+    });
+
+    it("should reject bounty increase with no ETH sent", async () => {
+      try {
+        await lostPetInstance.increaseBounty(caseId, {
+          from: owner,
+          value: 0
+        });
+        assert.fail("Should have thrown error");
+      } catch (error) {
+        assert.include(error.message, "Must send ETH");
+      }
+    });
+
+    it("should add bounty correctly to existing bounty", async () => {
+      const additional1 = web3.utils.toWei("0.3", "ether");
+
+      await lostPetInstance.increaseBounty(caseId, {
+        from: owner,
+        value: additional1
+      });
+
+      const { 1: finalBounty } = await lostPetInstance.getCaseBasic(caseId);
+      const expected = BigInt(ONE_ETHER) + BigInt(additional1);
+      assert.equal(finalBounty.toString(), expected.toString());
+    });
   });
 
 
@@ -119,16 +182,99 @@ contract("LostPet", (accounts) => {
 
 
   describe("Finder Submission", () => {
-    // TODO: Test allowing a finder to submit evidence
-    // TODO: Test tracking multiple finders for the same case
-    // TODO: Test rejection of duplicate finder submissions
-    // TODO: Test rejection of submissions with empty evidence
-    // TODO: Test isFinder() function returns correct status
-    // TODO: Test getFinderEvidence() retrieves correct evidence
+    let caseId;
+
+    beforeEach(async () => {
+      await lostPetInstance.createCase("Fluffy", {
+        from: owner,
+        value: ONE_ETHER
+      });
+      caseId = 0;
+    });
+
+    it("should allow a finder to submit evidence", async () => {
+      const evidence = "https://tinyurl.com/43bddh42";
+
+      const receipt = await lostPetInstance.submitAsFinder(caseId, evidence, {
+        from: finder1
+      });
+
+      assert.equal(receipt.logs.length, 1);
+      assert.equal(receipt.logs[0].event, "FinderSubmitted");
+      assert.equal(receipt.logs[0].args.finder, finder1);
+      assert.equal(receipt.logs[0].args.evidence, evidence);
+
+      const isFinder = await lostPetInstance.isFinder(caseId, finder1);
+      assert.equal(isFinder, true);
+
+      const storedEvidence = await lostPetInstance.getFinderEvidence(caseId, finder1);
+      assert.equal(storedEvidence, evidence);
+    })
+
+    it("should track multiple finders for the same case", async () => {
+      const evidence1 = "https://tinyurl.com/43bddh42";
+      const evidence2 = "https://tinyurl.com/9pnubvny";
+
+      await lostPetInstance.submitAsFinder(caseId, evidence1, { from: finder1 });
+      await lostPetInstance.submitAsFinder(caseId, evidence2, { from: finder2 });
+
+      const isFinder1 = await lostPetInstance.isFinder(caseId, finder1);
+      const isFinder2 = await lostPetInstance.isFinder(caseId, finder2);
+      assert.equal(isFinder1, true);
+      assert.equal(isFinder2, true);
+
+      const finderCount = await lostPetInstance.getFinderCount(caseId);
+      assert.equal(finderCount.toString(), "2");
+
+      const finders = await lostPetInstance.getFinders(caseId);
+      assert.equal(finders.length, 2);
+      assert.include(finders, finder1);
+      assert.include(finders, finder2);
+    });
+
+    it("should reject duplicate finder submissions", async () => {
+      const evidence = "https://tinyurl.com/43bddh42";
+
+      await lostPetInstance.submitAsFinder(caseId, evidence, { from: finder1 });
+
+      try {
+        await lostPetInstance.submitAsFinder(caseId, "https://tinyurl.com/9pnubvny", { from: finder1 });
+        assert.fail("Should have thrown error");
+      } catch (error) {
+        assert.include(error.message, "Already submitted as finder");
+      }
+    });
+    
+    it("should reject submissions with empty evidence", async () => {
+      try {
+        await lostPetInstance.submitAsFinder(caseId, "", { from: finder1 });
+        assert.fail("Should have thrown error");
+      } catch (error) {
+        assert.include(error.message, "Evidence cannot be empty");
+      }
+    });
+
+    it("should return correct finder status using the isFinder() function", async () => {
+      const isFinderBefore = await lostPetInstance.isFinder(caseId, finder1);
+      assert.equal(isFinderBefore, false);
+
+      await lostPetInstance.submitAsFinder(caseId, "https://tinyurl.com/9pnubvny", { from: finder1 });
+      const isFinderAfter = await lostPetInstance.isFinder(caseId, finder1);
+      assert.equal(isFinderAfter, true);
+    });
+
+    it("should retrieve correct evidence with getFinderEvidence()", async () => {
+      const evidence = "https://tinyurl.com/9pnubvny";
+    
+      await lostPetInstance.submitAsFinder(caseId, evidence, { from: finder1 });
+      
+      const storedEvidence = await lostPetInstance.getFinderEvidence(caseId, finder1);
+      assert.equal(storedEvidence, evidence);
+    });
   });
 
 
-  // Case Reolution
+  // Case Resolution
 
 
   describe("Case Resolution", () => {
@@ -193,9 +339,57 @@ contract("LostPet", (accounts) => {
 
 
   describe("View Functions - Detailed", () => {
-    // TODO: Test getCaseFull() returns all case details
+    let caseId;
+
+    beforeEach(async () => {
+      await lostPetInstance.createCase("Fluffy", {
+        from: owner,
+        value: ONE_ETHER
+      });
+      caseId = 0;
+
+      const evidence1 = "https://tinyurl.com/43bddh42";
+      const evidence2 = "https://tinyurl.com/9pnubvny";
+
+      await lostPetInstance.submitAsFinder(caseId, evidence1, { from: finder1 });
+      await lostPetInstance.submitAsFinder(caseId, evidence2, { from: finder2 });
+    });
+
+    it("should return all case details using getCaseFull() function", async () => {
+      const caseDetails = await lostPetInstance.getCaseFull(caseId);
+
+      assert.equal(caseDetails[0], owner, "Should return correct owner");
+      assert.equal(caseDetails[1], "Fluffy", "Should return correct pet name");
+      assert.equal(caseDetails[2].toString(), ONE_ETHER, "Should return correct bounty");
+      assert.equal(caseDetails[3].toString(), "0", "Should return Active status (0)");
+
+      const createdAt = Number(caseDetails[4]);
+      const expiresAt = Number(caseDetails[5]);
+      const currentTime = Math.floor(Date.now() / 1000);
+
+      assert.isAbove(createdAt, currentTime - 60, "createdAt should be recent");
+      assert.isBelow(createdAt, currentTime + 60, "createdAt should be recent");
+
+      const expectedExpiry = createdAt + (90 * 24 * 60 * 60);
+      const expiryDifference = Math.abs(expiresAt - expectedExpiry);
+      assert.isBelow(expiryDifference, 60, "expiresAt should be 90 days from createdAt");
+
+      assert.equal(caseDetails[6].toString(), "2", "Should return correct finder count");
+    });
+     
+    it("should include correct finder count in getCaseFull()", async () => {
+      let caseDetails = await lostPetInstance.getCaseFull(caseId);
+      assert.equal(caseDetails[6].toString(), "2", "Should show 2 finders initially");
+
+      await lostPetInstance.submitAsFinder(caseId, "https://tinyurl.com/9pnubvny", { from: otherAccount });
+
+      caseDetails = await lostPetInstance.getCaseFull(caseId);
+      assert.equal(caseDetails[6].toString(), "3", "Should show 3 finders after addition");
+
+      const finderCount = await lostPetInstance.getFinderCount(caseId);
+      assert.equal(caseDetails[6].toString(), finderCount.toString(), "getCaseFull finderCount should match getFinderCount()");
+    });
     // TODO: Test getCaseFull() returns correct case status enum value
-    // TODO: Test getCaseFull() includes finder count
   });
 
 
