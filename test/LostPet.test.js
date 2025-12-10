@@ -18,6 +18,26 @@ contract("LostPet", (accounts) => {
 
   let lostPetInstance;
 
+  // Helper to advance time and mine a block
+  async function increaseTime(seconds) {
+    await new Promise((resolve, reject) => {
+      web3.currentProvider.send({
+        jsonrpc: '2.0',
+        method: 'evm_increaseTime',
+        params: [seconds],
+        id: new Date().getTime()
+      }, (err, res) => err ? reject(err) : resolve(res));
+    });
+    await new Promise((resolve, reject) => {
+      web3.currentProvider.send({
+        jsonrpc: '2.0',
+        method: 'evm_mine',
+        params: [],
+        id: new Date().getTime() + 1
+      }, (err, res) => err ? reject(err) : resolve(res));
+    });
+  }
+
   beforeEach(async () => {
     lostPetInstance = await LostPet.new();
   });
@@ -170,7 +190,7 @@ contract("LostPet", (accounts) => {
       });
       const caseId = receipt.logs[0].args.caseId;
 
-      const result = await lostPetInstance.checkAndProcessExpiry(caseId);
+      const result = await lostPetInstance.checkAndProcessExpiry.call(caseId);
       assert.equal(result, false, "Should return false for non-expired case");
     });
 
@@ -182,10 +202,9 @@ contract("LostPet", (accounts) => {
       const caseId = receipt.logs[0].args.caseId;
 
       // Advance time beyond expiry
-      await web3.currentProvider.send({jsonrpc: '2.0', method: 'evm_increaseTime', params: [DEFAULT_EXPIRY_DAYS + 1], id: 0}, () => {});
-      await web3.currentProvider.send({jsonrpc: '2.0', method: 'evm_mine', params: [], id: 1}, () => {});
+      await increaseTime(DEFAULT_EXPIRY_DAYS + 1);
 
-      const result = await lostPetInstance.checkAndProcessExpiry(caseId);
+      const result = await lostPetInstance.checkAndProcessExpiry.call(caseId);
       assert.equal(result, true, "Should return true for expired case");
     });
 
@@ -198,8 +217,7 @@ contract("LostPet", (accounts) => {
       const caseId = receipt.logs[0].args.caseId;
 
       // Advance time beyond expiry
-      await web3.currentProvider.send({jsonrpc: '2.0', method: 'evm_increaseTime', params: [DEFAULT_EXPIRY_DAYS + 1], id: 0}, () => {});
-      await web3.currentProvider.send({jsonrpc: '2.0', method: 'evm_mine', params: [], id: 1}, () => {});
+      await increaseTime(DEFAULT_EXPIRY_DAYS + 1);
 
       await lostPetInstance.checkAndProcessExpiry(caseId);
       const finalBalance = await web3.eth.getBalance(owner);
@@ -215,8 +233,7 @@ contract("LostPet", (accounts) => {
       const caseId = receipt.logs[0].args.caseId;
 
       // Advance time beyond expiry
-      await web3.currentProvider.send({jsonrpc: '2.0', method: 'evm_increaseTime', params: [DEFAULT_EXPIRY_DAYS + 1], id: 0}, () => {});
-      await web3.currentProvider.send({jsonrpc: '2.0', method: 'evm_mine', params: [], id: 1}, () => {});
+      await increaseTime(DEFAULT_EXPIRY_DAYS + 1);
 
       await lostPetInstance.checkAndProcessExpiry(caseId);
       const caseDetails = await lostPetInstance.getCaseFull(caseId);
@@ -238,11 +255,17 @@ contract("LostPet", (accounts) => {
       const caseId2 = receipt2.logs[0].args.caseId;
 
       // Advance time beyond expiry
-      await web3.currentProvider.send({jsonrpc: '2.0', method: 'evm_increaseTime', params: [DEFAULT_EXPIRY_DAYS + 1], id: 0}, () => {});
-      await web3.currentProvider.send({jsonrpc: '2.0', method: 'evm_mine', params: [], id: 1}, () => {});
+      await increaseTime(DEFAULT_EXPIRY_DAYS + 1);
 
-      const result = await lostPetInstance.batchCheckExpiry([caseId1, caseId2]);
-      assert.equal(result.toString(), "2", "Should process 2 expired cases");
+      // Execute the batch transaction to process expiries
+      await lostPetInstance.batchCheckExpiry([caseId1, caseId2]);
+
+      // Verify both cases changed status to Expired
+      const caseDetails1 = await lostPetInstance.getCaseFull(caseId1);
+      const caseDetails2 = await lostPetInstance.getCaseFull(caseId2);
+
+      assert.equal(caseDetails1.status, CaseStatus.Expired, "First case should be Expired");
+      assert.equal(caseDetails2.status, CaseStatus.Expired, "Second case should be Expired");
     });
 
     it("should correctly identify expired cases with isCaseExpired()", async () => {
@@ -313,8 +336,7 @@ contract("LostPet", (accounts) => {
       await lostPetInstance.submitAsFinder(caseId, "Found the pet!", { from: finder1 });
 
       // Advance time to allow resolution
-      await web3.currentProvider.send({jsonrpc: '2.0', method: 'evm_increaseTime', params: [2 * 24 * 60 * 60], id: 0}, () => {});
-      await web3.currentProvider.send({jsonrpc: '2.0', method: 'evm_mine', params: [], id: 1}, () => {});
+      await increaseTime(2 * 24 * 60 * 60);
 
       // Resolve case
       await lostPetInstance.resolveCase(caseId, 0, { from: owner });
@@ -331,8 +353,7 @@ contract("LostPet", (accounts) => {
       const caseId = receipt.logs[0].args.caseId;
 
       // Advance time to allow cancellation (after 7 days)
-      await web3.currentProvider.send({jsonrpc: '2.0', method: 'evm_increaseTime', params: [7 * 24 * 60 * 60 + 1], id: 0}, () => {});
-      await web3.currentProvider.send({jsonrpc: '2.0', method: 'evm_mine', params: [], id: 1}, () => {});
+      await increaseTime(7 * 24 * 60 * 60 + 1);
 
       // Cancel case
       await lostPetInstance.cancelCase(caseId, { from: owner });
@@ -554,8 +575,7 @@ contract("LostPet", (accounts) => {
 
       // Submit finder and resolve
       await lostPetInstance.submitAsFinder(caseId, "Evidence", { from: finder1 });
-      await web3.currentProvider.send({jsonrpc: '2.0', method: 'evm_increaseTime', params: [2 * 24 * 60 * 60], id: 0}, () => {});
-      await web3.currentProvider.send({jsonrpc: '2.0', method: 'evm_mine', params: [], id: 1}, () => {});
+      await increaseTime(2 * 24 * 60 * 60);
       await lostPetInstance.resolveCase(caseId, 0, { from: owner });
 
       const activeCases = await lostPetInstance.getActiveCases();
@@ -570,8 +590,7 @@ contract("LostPet", (accounts) => {
       const caseId = receipt.logs[0].args.caseId;
 
       // Cancel case
-      await web3.currentProvider.send({jsonrpc: '2.0', method: 'evm_increaseTime', params: [7 * 24 * 60 * 60 + 1], id: 0}, () => {});
-      await web3.currentProvider.send({jsonrpc: '2.0', method: 'evm_mine', params: [], id: 1}, () => {});
+      await increaseTime(7 * 24 * 60 * 60 + 1);
       await lostPetInstance.cancelCase(caseId, { from: owner });
 
       const activeCases = await lostPetInstance.getActiveCases();
@@ -586,8 +605,7 @@ contract("LostPet", (accounts) => {
       const caseId = receipt.logs[0].args.caseId;
 
       // Advance time past expiry
-      await web3.currentProvider.send({jsonrpc: '2.0', method: 'evm_increaseTime', params: [DEFAULT_EXPIRY_DAYS + 1], id: 0}, () => {});
-      await web3.currentProvider.send({jsonrpc: '2.0', method: 'evm_mine', params: [], id: 1}, () => {});
+      await increaseTime(DEFAULT_EXPIRY_DAYS + 1);
 
       const activeCases = await lostPetInstance.getActiveCases();
       assert.equal(activeCases.length, 0, "Should have no active cases after expiry");
